@@ -1,0 +1,51 @@
+use std::str::FromStr;
+use crate::ast::{Expr, Stm, Program, Addop, Mulop, Type};
+use crate::utils::{apply_string_escapes};
+
+grammar;
+
+pub Stm: Box<Stm> = {
+    <e:Expr> ";" => Box::new(Stm::SExp(e)),
+    "{" <b:Stm*> "}" => Box::new(Stm::SBlock(b)),
+}
+
+pub Expr: Box<Expr> = { // (1)
+    #[precedence(level="0")] // Highest precedence
+    Double => Box::new(Expr::ELitDouble(<>)), // (2),
+    Int => Box::new(Expr::ELitInt(<>)), // (2),
+    String => Box::new(Expr::ELitString(<>)),
+    Ident => Box::new(Expr::EIdent(<>)),
+
+    #[precedence(level="1")] #[assoc(side="left")]
+    Expr Mulop Expr => Box::new(Expr::EMul(<>)),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    Expr Addop Expr => Box::new(Expr::EAdd(<>)),
+
+};
+
+
+Int: i32 = r"-?[0-9]+" => i32::from_str(<>).unwrap();
+Double: f64 = r"-?[0-9]+\.[0-9]+" => f64::from_str(<>).unwrap();
+String: String = <l:r#""(\\\\|\\"|[^"\\])*""#> => apply_string_escapes(&l[1..l.len()-1]);
+Ident: String = <r"[a-zA-Z_$][\w$]*"> => <>.into();
+
+
+Addop: Addop = {
+    "+" => Addop::Plus,
+    "-" => Addop::Minus,
+};
+
+Mulop: Mulop = {
+    "*" => Mulop::Times,
+    "/" => Mulop::Div,
+    "%" => Mulop::Mod,
+}
+
+Type : Type = {
+    "int" => Type::TInt,
+    "double" => Type::TDouble,
+    "boolean" => Type::TBool,
+    "string" => Type::TString,
+    "void" => Type::TVoid,
+}   
