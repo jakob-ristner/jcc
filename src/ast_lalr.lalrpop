@@ -1,20 +1,65 @@
 use std::str::FromStr;
-use crate::ast::{Expr, Stm, Program, Addop, Mulop, Type};
-use crate::utils::{apply_string_escapes};
+use crate::ast::*;
+use crate::utils::*;
 
 grammar;
-
-pub Stm: Box<Stm> = {
-    <e:Expr> ";" => Box::new(Stm::SExp(e)),
-    "{" <b:Stm*> "}" => Box::new(Stm::SBlock(b)),
+match {
+    r"\s*" => { }, // The default whitespace skipping is disabled if an `ignore pattern` is specified
+    r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
+    r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/" => { },  // Skip `/* comments */`
+    _
 }
 
-pub Expr: Box<Expr> = { // (1)
+
+pub Program: Program = {
+    <f:Fun*> => f,
+}
+
+Fun : Fun = {
+    <t:Type> <i:Ident> "(" <args:Comma<Arg>> ")" <b:Block> => (t, i, args, b),
+}
+
+Arg : Arg = {
+    <t:Type> <i:Ident> => (t, i),
+}
+
+Stm: Box<Stm> = {
+    OpenStm,
+    ClosedStm,
+}
+
+OpenStm: Box<Stm> = {
+    "if" "(" <e:Expr> ")" <s:Stm> => Box::new(Stm::SIf(e, s, None)),
+    "if" "(" <e:Expr> ")" <s1:ClosedStm> "else" <s2:OpenStm> => Box::new(Stm::SIf(e, s1,Some(s2))),
+    "while" "(" <e:Expr> ")" <s:OpenStm> => Box::new(Stm::SWhile(e, s)),
+}
+
+ClosedStm: Box<Stm> = {
+    SimpleStm,
+    "if" "(" <e:Expr> ")" <s1:ClosedStm> "else" <s2:ClosedStm> => Box::new(Stm::SIf(e, s1,Some(s2))),
+    "while" "(" <e:Expr> ")" <s:ClosedStm> => Box::new(Stm::SWhile(e, s)),
+}
+
+SimpleStm: Box<Stm> = {
+    <e:Expr> ";" => Box::new(Stm::SExp(e)),
+    <b:Block> => Box::new(Stm::SBlock(b)),
+    <t:Type> <i:Comma<Init>> ";" => Box::new(Stm::SInit(t,i)),
+    <i:Ident> "=" <e:Expr> ";" => Box::new(Stm::SAss(i, e)),
+    SRet,
+}
+
+Block: Block = {
+    "{" <v:Stm*> "}" => v,
+}
+
+Expr: Box<Expr> = {
     #[precedence(level="0")] // Highest precedence
-    Double => Box::new(Expr::ELitDouble(<>)), // (2),
-    Int => Box::new(Expr::ELitInt(<>)), // (2),
+    Double => Box::new(Expr::ELitDouble(<>)),
+    Int => Box::new(Expr::ELitInt(<>)),
     String => Box::new(Expr::ELitString(<>)),
     Ident => Box::new(Expr::EIdent(<>)),
+    Unop Expr => Box::new(Expr::EUnop(<>)),
+    "(" <e:Expr> ")" => e,
 
     #[precedence(level="1")] #[assoc(side="left")]
     Expr Mulop Expr => Box::new(Expr::EMul(<>)),
@@ -22,11 +67,21 @@ pub Expr: Box<Expr> = { // (1)
     #[precedence(level="2")] #[assoc(side="left")]
     Expr Addop Expr => Box::new(Expr::EAdd(<>)),
 
+
+    #[precedence(level="3")] #[assoc(side="none")]
+    Expr Relop Expr => Box::new(Expr::ERel(<>)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l:Expr> "&&" <r:Expr> => Box::new(Expr::EAnd(l, r)),
+    <l:Expr> "||" <r:Expr> => Box::new(Expr::EOr(l, r)),
+
+    #[precedence(level="5")] 
+    <i:Ident> "(" <args:Comma<Expr>> ")" => Box::new(Expr::EApp(i, args)),
 };
 
 
-Int: i32 = r"-?[0-9]+" => i32::from_str(<>).unwrap();
-Double: f64 = r"-?[0-9]+\.[0-9]+" => f64::from_str(<>).unwrap();
+Int: i32 = r"[0-9]+" => i32::from_str(<>).unwrap();
+Double: f64 = r"[0-9]+\.[0-9]+" => f64::from_str(<>).unwrap();
 String: String = <l:r#""(\\\\|\\"|[^"\\])*""#> => apply_string_escapes(&l[1..l.len()-1]);
 Ident: String = <r"[a-zA-Z_$][\w$]*"> => <>.into();
 
@@ -42,10 +97,45 @@ Mulop: Mulop = {
     "%" => Mulop::Mod,
 }
 
-Type : Type = {
+Relop: Relop = {
+    "<" => Relop::Lt,
+    "<=" => Relop::Le,
+    ">" => Relop::Gt,
+    ">=" => Relop::Ge,
+    "==" => Relop::Eq,
+    "!=" => Relop::Ne,
+}
+
+Unop: Unop = {
+    "-" => Unop::Neg,
+    "!" => Unop::Not,
+}
+
+Type: Type = {
     "int" => Type::TInt,
     "double" => Type::TDouble,
     "boolean" => Type::TBool,
     "string" => Type::TString,
     "void" => Type::TVoid,
 }   
+
+Init: Init = {
+    Ident => Init::INoInit(<>),
+    <i:Ident> "=" <e:Expr> => Init::IVarInit(i, e),
+}
+
+SRet: Box<Stm> = {
+    "return" <e:Expr> ";" => Box::new(Stm::SRet(Some(e))),
+    "return" ";" => Box::new(Stm::SRet(None)),
+}
+
+
+Comma<T>: Vec<T> = { // (1)
+    <mut v:(<T> ",")*> <e:T?> => match e { // (2)
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
