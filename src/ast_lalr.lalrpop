@@ -11,11 +11,11 @@ match {
 }
 
 
-pub Program: Program = {
+pub Program: Vec<Fun<Expr>> = {
     <f:Fun*> => f,
 }
 
-Fun : Fun = {
+Fun : Fun<Expr> = {
     <t:Type> <i:Ident> "(" <args:Comma<Arg>> ")" <b:Block> => (t, i, args, b),
 }
 
@@ -23,32 +23,35 @@ Arg : Arg = {
     <t:Type> <i:Ident> => (t, i),
 }
 
-Stm: Box<Stm> = {
+Stm: Box<Stm<Expr>> = {
     OpenStm,
     ClosedStm,
 }
 
-OpenStm: Box<Stm> = {
+OpenStm: Box<Stm<Expr>> = {
     "if" "(" <e:Expr> ")" <s:Stm> => Box::new(Stm::SIf(e, s, None)),
     "if" "(" <e:Expr> ")" <s1:ClosedStm> "else" <s2:OpenStm> => Box::new(Stm::SIf(e, s1,Some(s2))),
     "while" "(" <e:Expr> ")" <s:OpenStm> => Box::new(Stm::SWhile(e, s)),
 }
 
-ClosedStm: Box<Stm> = {
+ClosedStm: Box<Stm<Expr>> = {
     SimpleStm,
     "if" "(" <e:Expr> ")" <s1:ClosedStm> "else" <s2:ClosedStm> => Box::new(Stm::SIf(e, s1,Some(s2))),
     "while" "(" <e:Expr> ")" <s:ClosedStm> => Box::new(Stm::SWhile(e, s)),
 }
 
-SimpleStm: Box<Stm> = {
+SimpleStm: Box<Stm<Expr>> = {
     <e:Expr> ";" => Box::new(Stm::SExp(e)),
     <b:Block> => Box::new(Stm::SBlock(b)),
     <t:Type> <i:Comma<Init>> ";" => Box::new(Stm::SInit(t,i)),
     <i:Ident> "=" <e:Expr> ";" => Box::new(Stm::SAss(i, e)),
+    ";" => Box::new(Stm::SEmpty),
+    <i:Ident> "++" ";" => Box::new(Stm::IncDec(i, true)),
+    <i:Ident> "--" ";" => Box::new(Stm::IncDec(i, false)),
     SRet,
 }
 
-Block: Block = {
+Block: Block<Expr> = {
     "{" <v:Stm*> "}" => v,
 }
 
@@ -60,6 +63,8 @@ Expr: Box<Expr> = {
     Ident => Box::new(Expr::EIdent(<>)),
     Unop Expr => Box::new(Expr::EUnop(<>)),
     "(" <e:Expr> ")" => e,
+    "true" => Box::new(Expr::ELitBool(true)),
+    "false" => Box::new(Expr::ELitBool(false)),
 
     #[precedence(level="1")] #[assoc(side="left")]
     Expr Mulop Expr => Box::new(Expr::EMul(<>)),
@@ -119,12 +124,12 @@ Type: Type = {
     "void" => Type::TVoid,
 }   
 
-Init: Init = {
+Init: Init<Expr> = {
     Ident => Init::INoInit(<>),
     <i:Ident> "=" <e:Expr> => Init::IVarInit(i, e),
 }
 
-SRet: Box<Stm> = {
+SRet: Box<Stm<Expr>> = {
     "return" <e:Expr> ";" => Box::new(Stm::SRet(Some(e))),
     "return" ";" => Box::new(Stm::SRet(None)),
 }
