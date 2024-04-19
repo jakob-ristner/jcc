@@ -9,8 +9,8 @@ pub fn typecheck(program: Program<Expr>) -> Program<TypedExpr> {
     let mut env = Environment::new();
     let andExpression = Expr::EAnd(Box::new(Expr::ELitBool(true)), Box::new(Expr::ELitInt(3)));
 
-    infer_expr(Box::new(andExpression), &env).unwrap();
-
+    // infer_expr(Box::new(andExpression), &env).unwrap();
+    //
     todo!();
 }
 

@@ -124,9 +124,9 @@ Type: Type = {
     "void" => Type::TVoid,
 }   
 
-Init: Init<Expr> = {
-    Ident => Init::INoInit(<>),
-    <i:Ident> "=" <e:Expr> => Init::IVarInit(i, e),
+Init: Decl<Expr> = {
+    <i:Ident> => (i, None),
+    <i:Ident> "=" <e:Expr> => (i, Some(e)),
 }
 
 SRet: Box<Stm<Expr>> = {
