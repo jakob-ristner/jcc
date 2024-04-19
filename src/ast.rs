@@ -26,11 +26,7 @@ pub enum TypedExpr {
     TELitString(Type, String),
     TELitDouble(Type, f64),
     TEIdent(Type, Ident),
-    TEAdd(Type, Box<TypedExpr>, Addop, Box<TypedExpr>),
-    TEMul(Type, Box<TypedExpr>, Mulop, Box<TypedExpr>),
-    TEOr(Type, Box<TypedExpr>, Box<TypedExpr>),
-    TEAnd(Type, Box<TypedExpr>, Box<TypedExpr>),
-    TERel(Type, Box<TypedExpr>, Relop, Box<TypedExpr>),
+    TEBinop(Type, Box<TypedExpr>, Binop, Box<TypedExpr>),
     TEUnop(Type, Unop, Box<TypedExpr>),
     TEApp(Type, Ident, Vec<Box<TypedExpr>>),
 }
@@ -42,11 +38,7 @@ pub enum Expr {
     ELitString(String),
     ELitDouble(f64),
     EIdent(Ident),
-    EAdd(Box<Expr>, Addop, Box<Expr>),
-    EMul(Box<Expr>, Mulop, Box<Expr>),
-    EOr(Box<Expr>, Box<Expr>),
-    EAnd(Box<Expr>, Box<Expr>),
-    ERel(Box<Expr>, Relop, Box<Expr>),
+    EBinop(Box<Expr>, Binop, Box<Expr>),
     EUnop(Unop, Box<Expr>),
     EApp(Ident, Vec<Box<Expr>>),
 }
@@ -68,19 +60,6 @@ pub enum Binop {
     Ge,
 }
 
-#[derive(Debug, Clone)]
-pub enum Addop {
-    Plus,
-    Minus,
-}
-
-#[derive(Debug, Clone)]
-pub enum Mulop {
-    Times,
-    Div,
-    Mod,
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Type {
     TInt,
@@ -88,16 +67,6 @@ pub enum Type {
     TString,
     TBool,
     TVoid,
-}
-
-#[derive(Debug, Clone)]
-pub enum Relop {
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
 }
 
 #[derive(Debug, Clone)]

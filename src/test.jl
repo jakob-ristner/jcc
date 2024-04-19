@@ -4,3 +4,8 @@ int main (void y, int x) {
   f(x);
 
 }
+
+void foo(int x) {
+  x++;
+  f(x);
+}

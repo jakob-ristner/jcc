@@ -67,18 +67,18 @@ Expr: Box<Expr> = {
     "false" => Box::new(Expr::ELitBool(false)),
 
     #[precedence(level="1")] #[assoc(side="left")]
-    Expr Mulop Expr => Box::new(Expr::EMul(<>)),
+    Expr Mulop Expr => Box::new(Expr::EBinop(<>)),
 
     #[precedence(level="2")] #[assoc(side="left")]
-    Expr Addop Expr => Box::new(Expr::EAdd(<>)),
+    Expr Addop Expr => Box::new(Expr::EBinop(<>)),
 
 
     #[precedence(level="3")] #[assoc(side="none")]
-    Expr Relop Expr => Box::new(Expr::ERel(<>)),
+    Expr Relop Expr => Box::new(Expr::EBinop(<>)),
 
     #[precedence(level="4")] #[assoc(side="left")]
-    <l:Expr> "&&" <r:Expr> => Box::new(Expr::EAnd(l, r)),
-    <l:Expr> "||" <r:Expr> => Box::new(Expr::EOr(l, r)),
+    <l:Expr> "&&" <r:Expr> => Box::new(Expr::EBinop(l, Binop::And, r)),
+    <l:Expr> "||" <r:Expr> => Box::new(Expr::EBinop(l, Binop::Or, r)),
 
     #[precedence(level="5")] 
     <i:Ident> "(" <args:Comma<Expr>> ")" => Box::new(Expr::EApp(i, args)),
@@ -91,24 +91,24 @@ String: String = <l:r#""(\\\\|\\"|[^"\\])*""#> => apply_string_escapes(&l[1..l.l
 Ident: String = <r"[a-zA-Z_$][\w$]*"> => <>.into();
 
 
-Addop: Addop = {
-    "+" => Addop::Plus,
-    "-" => Addop::Minus,
+Addop: Binop = {
+    "+" => Binop::Add,
+    "-" => Binop::Sub,
 };
 
-Mulop: Mulop = {
-    "*" => Mulop::Times,
-    "/" => Mulop::Div,
-    "%" => Mulop::Mod,
+Mulop: Binop = {
+    "*" => Binop::Mul,
+    "/" => Binop::Div,
+    "%" => Binop::Mod,
 }
 
-Relop: Relop = {
-    "<" => Relop::Lt,
-    "<=" => Relop::Le,
-    ">" => Relop::Gt,
-    ">=" => Relop::Ge,
-    "==" => Relop::Eq,
-    "!=" => Relop::Ne,
+Relop: Binop = {
+    "<" => Binop::Lt,
+    "<=" => Binop::Le,
+    ">" => Binop::Gt,
+    ">=" => Binop::Ge,
+    "==" => Binop::Eq,
+    "!=" => Binop::Ne,
 }
 
 Unop: Unop = {

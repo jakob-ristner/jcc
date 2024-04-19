@@ -19,5 +19,6 @@ fn main() {
     eprintln!("Initial AST: {:?}", &program);
     eprintln!("Parsing Complete");
 
-    typechecker::typecheck(program);
+    let annotaed = typechecker::typecheck(program);
+    dbg!(annotaed);
 }
