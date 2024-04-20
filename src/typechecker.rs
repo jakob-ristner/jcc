@@ -5,7 +5,7 @@ use crate::ast::*;
 pub type Signature = (Type, Vec<Type>);
 
 pub fn typecheck(program: Program<Expr>) -> Result<Program<TypedExpr>, TypeError> {
-    let mut env = Environment::new();
+    let mut env = Env::new();
 
     // Top level function pass
     for (ty, name, args, _) in &program {
@@ -17,15 +17,17 @@ pub fn typecheck(program: Program<Expr>) -> Result<Program<TypedExpr>, TypeError
 }
 
 #[derive(Debug)]
-struct Environment {
+struct Env {
+    return_found: bool,
     function_sigs: HashMap<Ident, Signature>,
     variable_context: VecDeque<HashMap<Ident, Type>>,
 }
 
-impl Environment {
+impl Env {
     fn new() -> Self {
         let variable_context = VecDeque::new();
         Self {
+            return_found: false,
             function_sigs: HashMap::new(),
             variable_context,
         }
@@ -81,21 +83,16 @@ fn type_of(expr: &TypedExpr) -> Type {
     }
 }
 
-fn check_program(
-    program: Program<Expr>,
-    env: &mut Environment,
-) -> Result<Program<TypedExpr>, TypeError> {
+fn check_program(program: Program<Expr>, env: &mut Env) -> Result<Program<TypedExpr>, TypeError> {
     program
         .into_iter()
         .map(|fun| check_function(fun, env))
         .collect()
 }
 
-fn check_function(
-    (ty, name, args, body): Fun<Expr>,
-    env: &mut Environment,
-) -> Result<Fun<TypedExpr>, TypeError> {
+fn check_function(fun: Fun<Expr>, env: &mut Env) -> Result<Fun<TypedExpr>, TypeError> {
     env.push_scope();
+    let (ty, name, args, body) = fun;
     for (arg_ty, arg_name) in &args {
         if *arg_ty == Type::TVoid {
             return Err(TypeError::VoidArgument(name.clone(), arg_name.clone()));
@@ -104,15 +101,19 @@ fn check_function(
     }
     let typed_body = body
         .into_iter()
-        .map(|stm| check_statement(stm, env))
-        .collect::<Result<_, TypeError>>()?;
+        .map(|stm| check_stm(stm, env, ty))
+        .collect::<Result<_, _>>()?;
     env.pop_scope();
+    if !env.return_found && ty != Type::TVoid {
+        return Err(TypeError::NoReturn(name));
+    }
     Ok((ty, name, args, typed_body))
 }
 
-fn check_statement(
+fn check_stm(
     stm: Box<Stm<Expr>>,
-    env: &mut Environment,
+    env: &mut Env,
+    ret_ty: Type,
 ) -> Result<Box<Stm<TypedExpr>>, TypeError> {
     //generate empty match arms for stm
     match *stm {
@@ -122,16 +123,89 @@ fn check_statement(
             env.push_scope();
             let typed_block: Vec<_> = block
                 .into_iter()
-                .map(|stm| check_statement(stm, env))
+                .map(|stm| check_stm(stm, env, ret_ty))
                 .collect::<Result<_, _>>()?;
             env.pop_scope();
             Ok(Box::new(Stm::SBlock(typed_block)))
         }
-        _ => unimplemented!(),
+        Stm::SInit(ty, decls) => {
+            let typed_decls = decls
+                .into_iter()
+                .map(|(ident, expr)| {
+                    let typed_expr = expr.map(|expr| infer_expr(expr, env)).transpose()?;
+                    env.add_variable(ident.clone(), ty)?;
+                    Ok((ident, typed_expr))
+                })
+                .collect::<Result<_, _>>()?;
+            Ok(Box::new(Stm::SInit(ty, typed_decls)))
+        }
+        Stm::SAss(ident, expr) => {
+            let typed_expr = infer_expr(expr, env)?;
+            let var_ty = env.get_var_type(&ident)?;
+            if var_ty != type_of(&typed_expr) {
+                return Err(TypeError::AssignTypeError(
+                    ident,
+                    var_ty,
+                    type_of(&typed_expr),
+                ));
+            }
+            Ok(Box::new(Stm::SAss(ident, typed_expr)))
+        }
+        Stm::SIf(cond, then_stm, else_stm) => {
+            let return_found_before = env.return_found;
+
+            let typed_cond = infer_expr(cond, env)?;
+            if type_of(&typed_cond) != Type::TBool {
+                return Err(TypeError::ConditionError(type_of(&typed_cond)));
+            }
+
+            let typed_then = check_stm(then_stm, env, ret_ty)?;
+            let return_found_fst = env.return_found;
+            env.return_found = return_found_before;
+
+            let typed_else = else_stm
+                .map(|stm| check_stm(stm, env, ret_ty))
+                .transpose()?;
+
+            let return_found_snd = env.return_found;
+
+            env.return_found = (return_found_fst && return_found_snd) || return_found_before;
+
+            Ok(Box::new(Stm::SIf(typed_cond, typed_then, typed_else)))
+        }
+        Stm::SWhile(cond, body) => {
+            let return_found_before = env.return_found;
+            let typed_cond = infer_expr(cond, env)?;
+            if type_of(&typed_cond) != Type::TBool {
+                return Err(TypeError::ConditionError(type_of(&typed_cond)));
+            }
+            let typed_body = check_stm(body, env, ret_ty)?;
+            env.return_found = return_found_before;
+            Ok(Box::new(Stm::SWhile(typed_cond, typed_body)))
+        }
+        Stm::SIncDec(ident, incdec) => {
+            let var_ty = env.get_var_type(&ident)?;
+            if var_ty != Type::TInt {
+                return Err(TypeError::IncDecError(ident, var_ty));
+            }
+            Ok(Box::new(Stm::SIncDec(ident, incdec)))
+        }
+        Stm::SRet(expr) => {
+            env.return_found = true;
+            let typed_expr = expr.map(|expr| infer_expr(expr, env)).transpose()?;
+            if let Some(typed_expr) = &typed_expr {
+                if type_of(typed_expr) != ret_ty {
+                    return Err(TypeError::ReturnTypeError(ret_ty, type_of(typed_expr)));
+                }
+            } else if ret_ty != Type::TVoid {
+                return Err(TypeError::ReturnTypeError(ret_ty, Type::TVoid));
+            }
+            Ok(Box::new(Stm::SRet(typed_expr)))
+        }
     }
 }
 
-fn infer_expr(expr: Box<Expr>, env: &Environment) -> Result<Box<TypedExpr>, TypeError> {
+fn infer_expr(expr: Box<Expr>, env: &Env) -> Result<Box<TypedExpr>, TypeError> {
     match *expr {
         Expr::ELitInt(i) => Ok(Box::new(TypedExpr::TELitInt(Type::TInt, i))),
         Expr::ELitBool(b) => Ok(Box::new(TypedExpr::TELitBool(Type::TBool, b))),
@@ -142,6 +216,7 @@ fn infer_expr(expr: Box<Expr>, env: &Environment) -> Result<Box<TypedExpr>, Type
             ident,
         ))),
         Expr::EBinop(lhs, op, rhs) => {
+            use Binop::*;
             let lhs = infer_expr(lhs, env)?;
             let rhs = infer_expr(rhs, env)?;
             let tl = type_of(&lhs);
@@ -149,28 +224,28 @@ fn infer_expr(expr: Box<Expr>, env: &Environment) -> Result<Box<TypedExpr>, Type
             if tl != tr {
                 return Err(TypeError::BinaryOpError(tl, op, tr));
             }
-            match op {
-                Binop::Add
-                | Binop::Sub
-                | Binop::Mul
-                | Binop::Div
-                | Binop::Mod
-                | Binop::Lt
-                | Binop::Le
-                | Binop::Gt
-                | Binop::Ge => {
+            let out_type: Type = match op {
+                Add | Sub | Mul | Div | Mod => {
                     if tl != Type::TInt && tl != Type::TDouble {
                         return Err(TypeError::BinaryOpError(tl, op, tr));
                     }
+                    Ok(tl)
                 }
-                Binop::And | Binop::Or => {
+                Gt | Ge | Lt | Le => {
+                    if tl != Type::TInt && tl != Type::TDouble {
+                        return Err(TypeError::BinaryOpError(tl, op, tr));
+                    }
+                    Ok(Type::TBool)
+                }
+                And | Or => {
                     if tl != Type::TBool {
                         return Err(TypeError::BinaryOpError(tl, op, tr));
                     }
+                    Ok(Type::TBool)
                 }
-                Binop::Eq | Binop::Ne => {}
-            }
-            Ok(Box::new(TypedExpr::TEBinop(tl, lhs, op, rhs)))
+                Eq | Ne => Ok(Type::TBool),
+            }?;
+            Ok(Box::new(TypedExpr::TEBinop(out_type, lhs, op, rhs)))
         }
         Expr::EUnop(op, expr) => {
             let expr = infer_expr(expr, env)?;
@@ -223,4 +298,9 @@ pub enum TypeError {
     IncorrectArgType(Ident, Type, Type),
     VariableAlreadyDefined(Ident),
     UndefinedFunction(Ident),
+    AssignTypeError(Ident, Type, Type),
+    ConditionError(Type),
+    IncDecError(Ident, Type),
+    ReturnTypeError(Type, Type),
+    NoReturn(Ident),
 }

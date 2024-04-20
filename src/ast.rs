@@ -14,8 +14,8 @@ pub enum Stm<T> {
     SInit(Type, Vec<Decl<T>>),
     SAss(Ident, Box<T>),
     SIf(Box<T>, Box<Stm<T>>, Option<Box<Stm<T>>>),
-    IncDec(Ident, bool),
     SWhile(Box<T>, Box<Stm<T>>),
+    SIncDec(Ident, bool),
     SRet(Option<Box<T>>),
 }
 

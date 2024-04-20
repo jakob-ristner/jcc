@@ -46,8 +46,8 @@ SimpleStm: Box<Stm<Expr>> = {
     <t:Type> <i:Comma<Init>> ";" => Box::new(Stm::SInit(t,i)),
     <i:Ident> "=" <e:Expr> ";" => Box::new(Stm::SAss(i, e)),
     ";" => Box::new(Stm::SEmpty),
-    <i:Ident> "++" ";" => Box::new(Stm::IncDec(i, true)),
-    <i:Ident> "--" ";" => Box::new(Stm::IncDec(i, false)),
+    <i:Ident> "++" ";" => Box::new(Stm::SIncDec(i, true)),
+    <i:Ident> "--" ";" => Box::new(Stm::SIncDec(i, false)),
     SRet,
 }
 
