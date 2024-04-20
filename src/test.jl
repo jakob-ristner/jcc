@@ -1,11 +1,7 @@
-int main (void y, int x) {
-                          int x, y = f(i + x);
-  x++;
-  f(x);
-
+int main (boolean y, int x) {
+  x + 1;;
+  {
+   x / 2 + 3;
+  }
 }
 
-void foo(int x) {
-  x++;
-  f(x);
-}

@@ -13,16 +13,7 @@ pub fn typecheck(program: Program<Expr>) -> Result<Program<TypedExpr>, TypeError
         env.add_function(name.clone(), sig);
     }
 
-    dbg!(&env);
-
-    let test_and_expr = Expr::EBinop(
-        Box::new(Expr::ELitBool(true)),
-        Binop::And,
-        Box::new(Expr::ELitInt(1)),
-    );
-
-    infer_expr(Box::new(test_and_expr), &env)?;
-    todo!();
+    check_program(program, &mut env)
 }
 
 #[derive(Debug)]
@@ -114,10 +105,7 @@ fn check_function(
     let typed_body = body
         .into_iter()
         .map(|stm| check_statement(stm, env))
-        .collect::<Result<Vec<Stm<TypedExpr>>, TypeError>>()?
-        .into_iter()
-        .map(|stm| Box::new(stm))
-        .collect();
+        .collect::<Result<_, TypeError>>()?;
     env.pop_scope();
     Ok((ty, name, args, typed_body))
 }
@@ -125,34 +113,34 @@ fn check_function(
 fn check_statement(
     stm: Box<Stm<Expr>>,
     env: &mut Environment,
-) -> Result<Stm<TypedExpr>, TypeError> {
+) -> Result<Box<Stm<TypedExpr>>, TypeError> {
     //generate empty match arms for stm
     match *stm {
-        Stm::SEmpty => Ok(Stm::SEmpty),
-        Stm::SExp(expr) => Ok(Stm::SExp(Box::new(infer_expr(expr, env)?))),
+        Stm::SEmpty => Ok(Box::new(Stm::SEmpty)),
+        Stm::SExp(expr) => Ok(Box::new(Stm::SExp(infer_expr(expr, env)?))),
         Stm::SBlock(block) => {
             env.push_scope();
-            let typed_block = block
+            let typed_block: Vec<_> = block
                 .into_iter()
                 .map(|stm| check_statement(stm, env))
-                .collect::<Result<Vec<Stm<TypedExpr>>, TypeError>>()?
-                .into_iter()
-                .map(|stm| Box::new(stm))
-                .collect();
+                .collect::<Result<_, _>>()?;
             env.pop_scope();
-            Ok(Stm::SBlock(typed_block))
+            Ok(Box::new(Stm::SBlock(typed_block)))
         }
         _ => unimplemented!(),
     }
 }
 
-fn infer_expr(expr: Box<Expr>, env: &Environment) -> Result<TypedExpr, TypeError> {
+fn infer_expr(expr: Box<Expr>, env: &Environment) -> Result<Box<TypedExpr>, TypeError> {
     match *expr {
-        Expr::ELitInt(i) => Ok(TypedExpr::TELitInt(Type::TInt, i)),
-        Expr::ELitBool(b) => Ok(TypedExpr::TELitBool(Type::TBool, b)),
-        Expr::ELitString(s) => Ok(TypedExpr::TELitString(Type::TString, s)),
-        Expr::ELitDouble(d) => Ok(TypedExpr::TELitDouble(Type::TDouble, d)),
-        Expr::EIdent(ident) => Ok(TypedExpr::TEIdent(env.get_var_type(&ident)?, ident)),
+        Expr::ELitInt(i) => Ok(Box::new(TypedExpr::TELitInt(Type::TInt, i))),
+        Expr::ELitBool(b) => Ok(Box::new(TypedExpr::TELitBool(Type::TBool, b))),
+        Expr::ELitString(s) => Ok(Box::new(TypedExpr::TELitString(Type::TString, s))),
+        Expr::ELitDouble(d) => Ok(Box::new(TypedExpr::TELitDouble(Type::TDouble, d))),
+        Expr::EIdent(ident) => Ok(Box::new(TypedExpr::TEIdent(
+            env.get_var_type(&ident)?,
+            ident,
+        ))),
         Expr::EBinop(lhs, op, rhs) => {
             let lhs = infer_expr(lhs, env)?;
             let rhs = infer_expr(rhs, env)?;
@@ -182,7 +170,7 @@ fn infer_expr(expr: Box<Expr>, env: &Environment) -> Result<TypedExpr, TypeError
                 }
                 Binop::Eq | Binop::Ne => {}
             }
-            Ok(TypedExpr::TEBinop(tl, Box::new(lhs), op, Box::new(rhs)))
+            Ok(Box::new(TypedExpr::TEBinop(tl, lhs, op, rhs)))
         }
         Expr::EUnop(op, expr) => {
             let expr = infer_expr(expr, env)?;
@@ -199,17 +187,14 @@ fn infer_expr(expr: Box<Expr>, env: &Environment) -> Result<TypedExpr, TypeError
                     }
                 }
             }
-            Ok(TypedExpr::TEUnop(t, op, Box::new(expr)))
+            Ok(Box::new(TypedExpr::TEUnop(t, op, expr)))
         }
 
         Expr::EApp(name, args) => {
-            let typed_args: Vec<Box<TypedExpr>> = args
+            let typed_args: Vec<_> = args
                 .into_iter()
                 .map(|arg| infer_expr(arg, env))
-                .collect::<Result<Vec<TypedExpr>, TypeError>>()?
-                .into_iter()
-                .map(|arg| Box::new(arg))
-                .collect();
+                .collect::<Result<_, _>>()?;
             let (fun_type, arg_types) = env.get_fun_type(&name)?;
             if typed_args.len() != arg_types.len() {
                 return Err(TypeError::IncorrectArgCount(
@@ -223,7 +208,7 @@ fn infer_expr(expr: Box<Expr>, env: &Environment) -> Result<TypedExpr, TypeError
                     return Err(TypeError::IncorrectArgType(name, type_of(arg), *ty));
                 }
             }
-            Ok(TypedExpr::TEApp(fun_type, name, typed_args))
+            Ok(Box::new(TypedExpr::TEApp(fun_type, name, typed_args)))
         }
     }
 }
