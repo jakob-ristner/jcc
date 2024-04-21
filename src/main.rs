@@ -1,11 +1,15 @@
 mod ast;
 mod typechecker;
 mod utils;
+use anyhow::Result;
+use ast::*;
 use lalrpop_util::lalrpop_mod;
 use std::env;
 use std::fs;
 use std::io::{self, BufRead, BufReader};
 use std::process::exit;
+
+use crate::typechecker::TypeError;
 lalrpop_mod!(pub ast_lalr);
 
 fn main() {
@@ -27,29 +31,29 @@ fn main() {
         .collect::<Vec<String>>()
         .join("\n");
 
-    let program = ast_lalr::ProgramParser::new().parse(&file);
-    if program.is_err() {
-        eprintln!("{:?}", program.unwrap_err());
-        eprintln!("ERROR");
-        exit(1);
+    let result = frontend(file);
+    match result {
+        Ok(prog) => {
+            eprintln!("OK");
+            if !quiet {
+                eprintln!("{:?}", prog);
+            }
+            exit(0);
+        }
+        Err(e) => {
+            eprintln!("ERROR");
+            if !quiet {
+                eprintln!("Error: {:?}", e);
+            }
+            exit(1);
+        }
     }
-    let program = program.unwrap();
+}
 
-    if !quiet {
-        eprintln!("Parsed AST: {:?}\n", &program);
-    }
-
-    let annotaed = typechecker::typecheck(program);
-    if annotaed.is_err() {
-        eprintln!("{:?}", annotaed.unwrap_err());
-        eprintln!("ERROR");
-        exit(1);
-    }
-    let annotaed = annotaed.unwrap();
-
-    if !quiet {
-        eprintln!("Typed AST: {:?}\n", &annotaed);
-    }
-
-    eprintln!("OK");
+fn frontend(input: String) -> Result<Program<TypedExpr>> {
+    let program = ast_lalr::ProgramParser::new()
+        .parse(&input)
+        .map_err(|_| TypeError::ParseError)?;
+    let annotated = typechecker::typecheck(program)?;
+    Ok(annotated)
 }

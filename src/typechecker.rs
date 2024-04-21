@@ -1,8 +1,7 @@
-use std::collections::{HashMap, VecDeque};
-use std::error::Error;
-use std::fmt;
-
 use crate::ast::*;
+use std::collections::{HashMap, VecDeque};
+use std::fmt;
+use thiserror::Error;
 
 pub type Signature = (Type, Vec<Type>);
 
@@ -328,33 +327,40 @@ fn infer_expr(expr: Box<Expr>, env: &Env) -> Result<Box<TypedExpr>, TypeError> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TypeError {
+    #[error("Void argument {0} in function {1}")]
     VoidArgument(Ident, Ident),
+    #[error("Binary operation error: {0:?} {1:?} {2:?}")]
     BinaryOpError(Type, Binop, Type),
+    #[error("Unary operation error: {0:?} {1:?}")]
     UnaryOpError(Unop, Type),
+    #[error("Undefined variable {0}")]
     UndefinedVariable(Ident),
+    #[error("Incorrect number of arguments for function {0}: expected {1}, got {2}")]
     IncorrectArgCount(Ident, usize, usize),
+    #[error("Incorrect argument type for function {0}: expected {1:?}, got {2:?}")]
     IncorrectArgType(Ident, Type, Type),
+    #[error("Variable {0} already defined")]
     VariableAlreadyDefined(Ident),
+    #[error("Undefined function {0}")]
     UndefinedFunction(Ident),
+    #[error("Assigning {0} to variable {1:?} of type {2:?}")]
     AssignTypeError(Ident, Type, Type),
+    #[error("Condition error: expected bool, got {0:?}")]
     ConditionError(Type),
+    #[error("Increment/decrement error: variable {0} of type {1:?}")]
     IncDecError(Ident, Type),
+    #[error("Return type error: expected {0:?}, got {1:?}")]
     ReturnTypeError(Type, Type),
+    #[error("No return statement in function {0}")]
     NoReturn(Ident),
+    #[error("Non-void statement in void function: {0:?}")]
     NonVoidStm(Type),
+    #[error("Function {0} already defined")]
     FunctionAlreadyDefined(Ident),
+    #[error("Void assignment to variable {0}")]
     VoidAssign(Ident),
-}
-impl fmt::Display for TypeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Error for TypeError {
-    fn description(&self) -> &str {
-        "type error"
-    }
+    #[error("Parse error")]
+    ParseError,
 }
