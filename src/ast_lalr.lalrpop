@@ -55,16 +55,60 @@ Block: Block<Expr> = {
     "{" <v:Stm*> "}" => v,
 }
 
+
+Expr6: Box<Expr> = {
+    <i:Ident> "(" <args:Comma<Expr>> ")" => Box::new(Expr::EApp(i, args)),
+    "(" <e:Expr> ")" => e,
+    Double => Box::new(Expr::ELitDouble(<>)),
+    Int => Box::new(Expr::ELitInt(<>)),
+    String => Box::new(Expr::ELitString(<>)),
+    Ident => Box::new(Expr::EIdent(<>)),
+    "true" => Box::new(Expr::ELitBool(true)),
+    "false" => Box::new(Expr::ELitBool(false)),
+}
+
+Expr5: Box<Expr> = {
+    Expr6,
+    Unop Expr6 => Box::new(Expr::EUnop(<>)),
+}
+
+Expr4: Box<Expr> = {
+    Expr5,
+    Expr4 Mulop Expr5 => Box::new(Expr::EBinop(<>)),
+}
+
+Expr3: Box<Expr> = {
+    Expr4,
+    Expr3 Addop Expr4 => Box::new(Expr::EBinop(<>)),
+}
+
+Expr2: Box<Expr> = {
+    Expr3,
+    Expr2 Relop Expr3 => Box::new(Expr::EBinop(<>)),
+}
+
+Expr1: Box<Expr> = {
+    Expr2,
+    <l:Expr2> "&&" <r:Expr1> => Box::new(Expr::EBinop(l, Binop::And, r)),
+}
+
 Expr: Box<Expr> = {
+   Expr1, 
+    <l:Expr1> "||" <r:Expr> => Box::new(Expr::EBinop(l, Binop::Or, r)),
+}
+
+
+Exprbak: Box<Expr> = {
     #[precedence(level="0")] // Highest precedence
+    Expr6,
     Double => Box::new(Expr::ELitDouble(<>)),
     Int => Box::new(Expr::ELitInt(<>)),
     String => Box::new(Expr::ELitString(<>)),
     Ident => Box::new(Expr::EIdent(<>)),
     Unop Expr => Box::new(Expr::EUnop(<>)),
-    "(" <e:Expr> ")" => e,
     "true" => Box::new(Expr::ELitBool(true)),
     "false" => Box::new(Expr::ELitBool(false)),
+    "(" <e:Expr> ")" => e,
 
     #[precedence(level="1")] #[assoc(side="left")]
     Expr Mulop Expr => Box::new(Expr::EBinop(<>)),
@@ -72,16 +116,12 @@ Expr: Box<Expr> = {
     #[precedence(level="2")] #[assoc(side="left")]
     Expr Addop Expr => Box::new(Expr::EBinop(<>)),
 
-
     #[precedence(level="3")] #[assoc(side="none")]
     Expr Relop Expr => Box::new(Expr::EBinop(<>)),
 
     #[precedence(level="4")] #[assoc(side="left")]
     <l:Expr> "&&" <r:Expr> => Box::new(Expr::EBinop(l, Binop::And, r)),
     <l:Expr> "||" <r:Expr> => Box::new(Expr::EBinop(l, Binop::Or, r)),
-
-    #[precedence(level="5")] 
-    <i:Ident> "(" <args:Comma<Expr>> ")" => Box::new(Expr::EApp(i, args)),
 };
 
 
@@ -110,6 +150,7 @@ Relop: Binop = {
     "==" => Binop::Eq,
     "!=" => Binop::Ne,
 }
+
 
 Unop: Unop = {
     "-" => Unop::Neg,

@@ -1,4 +1,6 @@
 use std::collections::{HashMap, VecDeque};
+use std::error::Error;
+use std::fmt;
 
 use crate::ast::*;
 
@@ -10,6 +12,9 @@ pub fn typecheck(program: Program<Expr>) -> Result<Program<TypedExpr>, TypeError
     // Top level function pass
     for (ty, name, args, _) in &program {
         let sig = (ty.clone(), args.iter().map(|(ty, _)| ty.clone()).collect());
+        if env.get_fun_type(&name).is_ok() {
+            return Err(TypeError::FunctionAlreadyDefined(name.clone()));
+        }
         env.add_function(name.clone(), sig);
     }
 
@@ -26,9 +31,27 @@ struct Env {
 impl Env {
     fn new() -> Self {
         let variable_context = VecDeque::new();
+        let mut function_sigs = HashMap::new();
+        // Built-in functions
+        //  void printInt (int n)
+        // void printDouble (double x)
+        // void printString (String s)
+        // int readInt ()
+        // double readDouble ()
+        function_sigs.insert("printInt".to_string(), (Type::TVoid, vec![Type::TInt]));
+        function_sigs.insert(
+            "printDouble".to_string(),
+            (Type::TVoid, vec![Type::TDouble]),
+        );
+        function_sigs.insert(
+            "printString".to_string(),
+            (Type::TVoid, vec![Type::TString]),
+        );
+        function_sigs.insert("readInt".to_string(), (Type::TInt, vec![]));
+        function_sigs.insert("readDouble".to_string(), (Type::TDouble, vec![]));
         Self {
             return_found: false,
-            function_sigs: HashMap::new(),
+            function_sigs,
             variable_context,
         }
     }
@@ -91,6 +114,7 @@ fn check_program(program: Program<Expr>, env: &mut Env) -> Result<Program<TypedE
 }
 
 fn check_function(fun: Fun<Expr>, env: &mut Env) -> Result<Fun<TypedExpr>, TypeError> {
+    env.return_found = false;
     env.push_scope();
     let (ty, name, args, body) = fun;
     for (arg_ty, arg_name) in &args {
@@ -118,7 +142,13 @@ fn check_stm(
     //generate empty match arms for stm
     match *stm {
         Stm::SEmpty => Ok(Box::new(Stm::SEmpty)),
-        Stm::SExp(expr) => Ok(Box::new(Stm::SExp(infer_expr(expr, env)?))),
+        Stm::SExp(expr) => {
+            let typed_expr = infer_expr(expr, env)?;
+            if type_of(&typed_expr) != Type::TVoid {
+                return Err(TypeError::NonVoidStm(type_of(&typed_expr)));
+            }
+            Ok(Box::new(Stm::SExp(typed_expr)))
+        }
         Stm::SBlock(block) => {
             env.push_scope();
             let typed_block: Vec<_> = block
@@ -129,10 +159,26 @@ fn check_stm(
             Ok(Box::new(Stm::SBlock(typed_block)))
         }
         Stm::SInit(ty, decls) => {
+            if ty == Type::TVoid {
+                return Err(TypeError::VoidAssign("".to_string()));
+            }
             let typed_decls = decls
                 .into_iter()
                 .map(|(ident, expr)| {
-                    let typed_expr = expr.map(|expr| infer_expr(expr, env)).transpose()?;
+                    let typed_expr = expr
+                        .map(|expr| {
+                            let te = infer_expr(expr, env)?;
+                            if type_of(&te) != ty {
+                                return Err(TypeError::AssignTypeError(
+                                    ident.clone(),
+                                    ty,
+                                    type_of(&te),
+                                ));
+                            }
+                            Ok(te)
+                        })
+                        .transpose()?;
+
                     env.add_variable(ident.clone(), ty)?;
                     Ok((ident, typed_expr))
                 })
@@ -303,4 +349,18 @@ pub enum TypeError {
     IncDecError(Ident, Type),
     ReturnTypeError(Type, Type),
     NoReturn(Ident),
+    NonVoidStm(Type),
+    FunctionAlreadyDefined(Ident),
+    VoidAssign(Ident),
+}
+impl fmt::Display for TypeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Error for TypeError {
+    fn description(&self) -> &str {
+        "type error"
+    }
 }
