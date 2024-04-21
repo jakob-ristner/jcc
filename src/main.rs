@@ -10,13 +10,15 @@ lalrpop_mod!(pub ast_lalr);
 
 fn main() {
     //TODO better arg parsing
-    let args: Vec<String> = env::args().collect();
-
+    //
     let arg = env::args().nth(1);
 
-    let reader: Box<dyn BufRead> = match arg {
-        None => Box::new(BufReader::new(io::stdin())),
-        Some(filename) => Box::new(BufReader::new(fs::File::open(filename).unwrap())),
+    let (quiet, reader): (bool, Box<dyn BufRead>) = match arg {
+        None => (true, Box::new(BufReader::new(io::stdin()))),
+        Some(filename) => (
+            false,
+            Box::new(BufReader::new(fs::File::open(filename).unwrap())),
+        ),
     };
 
     let file = reader
@@ -33,10 +35,9 @@ fn main() {
     }
     let program = program.unwrap();
 
-    eprintln!("Parsing");
-    eprintln!("Args {:?}", &args);
-    eprintln!("Initial AST: {:?}", &program);
-    eprintln!("Parsing Complete");
+    if !quiet {
+        eprintln!("Parsed AST: {:?}\n", &program);
+    }
 
     let annotaed = typechecker::typecheck(program);
     if annotaed.is_err() {
@@ -46,8 +47,9 @@ fn main() {
     }
     let annotaed = annotaed.unwrap();
 
-    eprintln!("Typechecking");
-    eprintln!("Annotated AST: {:?}", &annotaed);
-    eprintln!("Typechecking Complete");
+    if !quiet {
+        eprintln!("Typed AST: {:?}\n", &annotaed);
+    }
+
     eprintln!("OK");
 }

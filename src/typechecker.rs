@@ -32,12 +32,6 @@ impl Env {
     fn new() -> Self {
         let variable_context = VecDeque::new();
         let mut function_sigs = HashMap::new();
-        // Built-in functions
-        //  void printInt (int n)
-        // void printDouble (double x)
-        // void printString (String s)
-        // int readInt ()
-        // double readDouble ()
         function_sigs.insert("printInt".to_string(), (Type::TVoid, vec![Type::TInt]));
         function_sigs.insert(
             "printDouble".to_string(),
